@@ -1,49 +1,101 @@
 import streamlit as st
 import pandas as pd
 import joblib
+from urllib.parse import urlparse
 import tldextract
 import re
 
-# Load the saved model
-model = joblib.load("phish_model.pkl")
-
 st.set_page_config(page_title="Phishing Website Detector", page_icon="🔒", layout="centered")
 
-# Title and description
 st.title("🔒 Phishing Website Detector")
 st.write("Enter a website URL below to check if it is legitimate or a phishing site.")
 
-# Function to extract features from URL
-def extract_features(url):
-    domain_info = tldextract.extract(url)
-    domain = domain_info.domain
-    subdomain = domain_info.subdomain
-    suffix = domain_info.suffix
+# --- Load model robustly (handles both dict and direct model pickle) ---
+obj = joblib.load("phish_model.pkl")
+if isinstance(obj, dict):
+    model = obj.get("model")
+    model_features = obj.get("features")  # list of feature column names used during training
+else:
+    # older style: model saved directly
+    model = obj
+    model_features = None
 
-    features = {
-        "url_length": len(url),
-        "num_dots": url.count("."),
-        "has_https": 1 if "https" in url else 0,
-        "num_digits": sum(c.isdigit() for c in url),
-        "num_special_chars": len(re.findall(r"[^A-Za-z0-9]", url)),
-        "domain_length": len(domain),
-    }
-    return pd.DataFrame([features])
+# If model failed to load, stop early
+if model is None:
+    st.error("Model failed to load. Please re-upload phish_model.pkl (it should contain the trained model).")
+    st.stop()
 
-# Input box for user
-url_input = st.text_input("🔗 Enter Website URL", placeholder="e.g., http://example.com")
+# --- The feature extractor used to *match training* (full lexical features) ---
+def url_features_for_model(url):
+    parsed = urlparse(url if "://" in url else "http://" + url)
+    ext = tldextract.extract(url)
+    domain = ext.domain or ""
+    suffix = ext.suffix or ""
+    subdomain = ext.subdomain or ""
+    s = url.lower()
 
-# Predict button
+    features = {}
+    features['url_len'] = len(s)
+    features['hostname_len'] = len(parsed.hostname or '')
+    features['path_len'] = len(parsed.path or '')
+    features['query_len'] = len(parsed.query or '')
+    features['count_dots'] = s.count('.')
+    features['count_hyphen'] = s.count('-')
+    features['count_at'] = s.count('@')
+    features['count_equal'] = s.count('=')
+    features['count_slash'] = s.count('/')
+    features['has_ip'] = int(bool(parsed.hostname and all(ch.isdigit() or ch=='.' for ch in (parsed.hostname or '').replace(':','').split(':')[0].split('.')) and len((parsed.hostname or '').split('.'))==4))
+    features['is_https'] = int(parsed.scheme == 'https')
+    features['subdomain_parts'] = subdomain.count('.') + 1 if subdomain else 0
+    features['domain_len'] = len(domain)
+    features['suffix_len'] = len(suffix)
+    features['count_digits'] = sum(ch.isdigit() for ch in s)
+    features['count_letters'] = sum(ch.isalpha() for ch in s)
+    features['digits_to_len'] = features['count_digits'] / (features['url_len'] + 1)
+    features['letters_to_len'] = features['count_letters'] / (features['url_len'] + 1)
+    return features
+
+# --- Input box and prediction ---
+url_input = st.text_input("🔗 Enter Website URL", placeholder="e.g., https://example.com")
+
 if st.button("Predict"):
-    if url_input.strip() == "":
-        st.warning("⚠️ Please enter a URL before predicting.")
+    if not url_input.strip():
+        st.warning("Please enter a URL.")
     else:
         try:
-            features = extract_features(url_input)
-            prediction = model.predict(features)[0]
-            if prediction == 1:
-                st.error("🚨 This website is likely **Phishing**!")
+            # Build feature dict and DataFrame
+            feat_dict = url_features_for_model(url_input)
+            X = pd.DataFrame([feat_dict])
+
+            # If we have the model_features list saved with the model, ensure column order & missing cols
+            if model_features:
+                # ensure all expected columns exist; add missing with zeros
+                for c in model_features:
+                    if c not in X.columns:
+                        X[c] = 0
+                # Keep only model_features in the right order
+                X = X[model_features]
             else:
-                st.success("✅ This website looks **Legitimate**.")
+                # If we don't have model_features, assume X columns match
+                pass
+
+            # Predict
+            pred = model.predict(X)[0]
+            prob = None
+            if hasattr(model, "predict_proba"):
+                prob = float(model.predict_proba(X)[0, 1])
+
+            # Show results
+            if pred == 1:
+                if prob is None:
+                    st.error("🚨 Predicted: Phishing")
+                else:
+                    st.error(f"🚨 Predicted: Phishing (prob={prob:.2f})")
+            else:
+                if prob is None:
+                    st.success("✅ Predicted: Legitimate")
+                else:
+                    st.success(f"✅ Predicted: Legitimate (prob={prob:.2f})")
+
         except Exception as e:
             st.error(f"An error occurred while processing the URL: {e}")
