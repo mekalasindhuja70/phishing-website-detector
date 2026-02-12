@@ -13,7 +13,7 @@ st.set_page_config(page_title="Advanced Phishing Detector", page_icon="🔒", la
 st.title("🔒 Advanced Hybrid Phishing Website Detector")
 st.write("Machine Learning + Heuristics + Google Safe Browsing")
 
-# 🔐 ADD YOUR API KEY HERE
+# 🔐 ADD YOUR GOOGLE SAFE BROWSING API KEY
 GOOGLE_API_KEY = "YOUR_GOOGLE_SAFE_BROWSING_API_KEY"
 
 # -------------------- LOAD MODEL --------------------
@@ -39,11 +39,11 @@ SUSPICIOUS_KEYWORDS = [
 SUSPICIOUS_TLDS = ["tk","ml","ga","cf","gq"]
 
 KNOWN_BRANDS = [
-    "paypal","amazon","google","facebook",
-    "instagram","bank"
+    "paypal","amazon","google",
+    "facebook","instagram","bank"
 ]
 
-# -------------------- HELPER FUNCTIONS --------------------
+# -------------------- FUNCTIONS --------------------
 def calculate_entropy(s):
     if len(s) == 0:
         return 0
@@ -73,28 +73,14 @@ def extract_features(url):
     features['digits_to_len'] = features['count_digits']/(features['url_len']+1)
     features['letters_to_len'] = features['count_letters']/(features['url_len']+1)
 
-    # IP detection
     features['has_ip'] = int(hostname.replace('.','').isdigit() and hostname.count('.') == 3)
-
-    # Subdomain count
     features['subdomain_parts'] = ext.subdomain.count('.')+1 if ext.subdomain else 0
 
-    # Suspicious keyword
     features['has_suspicious_keyword'] = int(any(k in s for k in SUSPICIOUS_KEYWORDS))
-
-    # Suspicious TLD
     features['suspicious_tld'] = int(ext.suffix in SUSPICIOUS_TLDS)
-
-    # Brand misuse
     features['brand_in_domain'] = int(any(b in ext.domain for b in KNOWN_BRANDS))
-
-    # Entropy
     features['url_entropy'] = calculate_entropy(s)
-
-    # Double slash trick
     features['double_slash_path'] = int("//" in parsed.path)
-
-    # Executable file
     features['has_executable'] = int(any(extn in s for extn in [".exe",".zip",".scr"]))
 
     return features
@@ -122,7 +108,7 @@ def check_google_safe_browsing(url):
     except:
         return False
 
-# -------------------- UI INPUT --------------------
+# -------------------- UI --------------------
 url_input = st.text_input("🔗 Enter Website URL", placeholder="https://example.com")
 
 if st.button("Analyze URL"):
@@ -141,49 +127,44 @@ if st.button("Analyze URL"):
                 X = X[model_features]
 
             pred = model.predict(X)[0]
-            prob = None
-            if hasattr(model,"predict_proba"):
-                prob = float(model.predict_proba(X)[0][1])
-
-            # Google Safe Browsing
+            prob = float(model.predict_proba(X)[0][1]) if hasattr(model,"predict_proba") else None
             is_blacklisted = check_google_safe_browsing(url_input)
 
             st.divider()
             st.subheader("🔍 Security Analysis")
 
-            # -------------------- PROBABILITY GRAPH --------------------
-            # -------------------- LAYOUT WITH COLUMNS --------------------
-           col1, col2 = st.columns([2, 1])  # Left bigger, right smaller
+            # -------------------- PROBABILITY SECTION WITH RIGHT PLOT --------------------
+            if prob is not None:
 
-           with col1:
-           st.subheader("📊 ML Risk Probability")
-           st.progress(int(prob * 100))
-           if prob < 0.3:
-           st.success(f"🟢 Low Risk ({prob:.2f})")
-           elif prob < 0.7:
-           st.warning(f"🟡 Medium Risk ({prob:.2f})")
-           else:
-           st.error(f"🔴 High Risk ({prob:.2f})")
+                col1, col2 = st.columns([3, 1])
 
-           with col2:
-           # Smaller figure size
-           fig, ax = plt.subplots(figsize=(3, 3))  # 👈 control size here
+                with col1:
+                    st.subheader("📊 ML Risk Probability")
+                    st.progress(int(prob * 100))
 
-           labels = ["Legitimate", "Phishing"]
-           values = [1 - prob, prob]
-           colors = ["green", "red"]
+                    if prob < 0.3:
+                        st.success(f"🟢 Low Risk ({prob:.2f})")
+                    elif prob < 0.7:
+                        st.warning(f"🟡 Medium Risk ({prob:.2f})")
+                    else:
+                        st.error(f"🔴 High Risk ({prob:.2f})")
 
-           ax.bar(labels, values, color=colors)
-           ax.set_ylim([0, 1])
-           ax.set_ylabel("Prob")
+                with col2:
+                    fig, ax = plt.subplots(figsize=(2.5, 2.5))
+                    labels = ["Legitimate", "Phishing"]
+                    values = [1 - prob, prob]
+                    colors = ["green", "red"]
 
-           st.pyplot(fig)
+                    ax.bar(labels, values, color=colors)
+                    ax.set_ylim([0, 1])
+                    ax.set_ylabel("Prob")
+                    st.pyplot(fig)
 
             # -------------------- GOOGLE SAFE BROWSING --------------------
             if is_blacklisted:
-                st.error("🚨- Reported as Dangerous")
+                st.error("🚨 Google Safe Browsing: Reported as Dangerous")
             else:
-                st.success("✅- No Threat Found")
+                st.success("✅ Google Safe Browsing: No Threat Found")
 
             # -------------------- FINAL DECISION --------------------
             final_prediction = "Legitimate"
@@ -206,19 +187,17 @@ if st.button("Analyze URL"):
             # -------------------- FEATURE IMPORTANCE --------------------
             if hasattr(model,"feature_importances_"):
                 st.divider()
-                st.subheader("📈 Feature Importance")
+                st.subheader("📈 Top Feature Importance")
 
                 importance_df = pd.DataFrame({
                     "Feature": X.columns,
                     "Importance": model.feature_importances_
                 }).sort_values(by="Importance", ascending=False).head(10)
 
-                fig2, ax2 = plt.subplots()
+                fig2, ax2 = plt.subplots(figsize=(5,4))
                 ax2.barh(importance_df["Feature"], importance_df["Importance"])
                 ax2.invert_yaxis()
                 st.pyplot(fig2)
 
         except Exception as e:
             st.error(f"Error: {e}")
-
-
