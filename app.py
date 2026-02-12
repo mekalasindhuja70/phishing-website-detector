@@ -136,7 +136,7 @@ if st.button("Analyze URL"):
             # -------------------- PROBABILITY SECTION WITH RIGHT PLOT --------------------
             if prob is not None:
 
-                col1, col2 = st.columns([3, 1])
+                col1, col2 = st.columns([2, 2])
 
                 with col1:
                     st.subheader("📊 ML Risk Probability")
@@ -150,7 +150,7 @@ if st.button("Analyze URL"):
                         st.error(f"🔴 High Risk ({prob:.2f})")
 
                 with col2:
-                    fig, ax = plt.subplots(figsize=(2.5, 2.5))
+                    fig, ax = plt.subplots(figsize=(4, 3))
                     labels = ["Legitimate", "Phishing"]
                     values = [1 - prob, prob]
                     colors = ["green", "red"]
@@ -162,9 +162,9 @@ if st.button("Analyze URL"):
 
             # -------------------- GOOGLE SAFE BROWSING --------------------
             if is_blacklisted:
-                st.error("🚨 Google Safe Browsing: Reported as Dangerous")
+                st.error("🚨Reported as Dangerous")
             else:
-                st.success("✅ Google Safe Browsing: No Threat Found")
+                st.success("✅ No Threat Found")
 
             # -------------------- FINAL DECISION --------------------
             final_prediction = "Legitimate"
@@ -201,3 +201,4 @@ if st.button("Analyze URL"):
 
         except Exception as e:
             st.error(f"Error: {e}")
+
