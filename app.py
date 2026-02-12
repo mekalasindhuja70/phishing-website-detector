@@ -155,13 +155,14 @@ if st.button("Analyze URL"):
                     values = [1 - prob, prob]
                     colors = ["green", "red"]
                     # Control bar positions manually
-                    x_positions = [0, 0.5]   
-                    ax.bar(x_positions, values, color=colors, width=0.2)
+                    x_positions = [0, 0.65]   
+                    ax.bar(x_positions, values, color=colors, width=0.45)
                     ax.set_xticks(x_positions)
                     ax.set_xticklabels(labels)
                     ax.set_ylim([0, 1])
                     ax.set_ylabel("Probability")
                     st.pyplot(fig)
+                  
 
             # -------------------- GOOGLE SAFE BROWSING --------------------
             if is_blacklisted:
@@ -204,6 +205,7 @@ if st.button("Analyze URL"):
 
         except Exception as e:
             st.error(f"Error: {e}")
+
 
 
 
