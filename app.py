@@ -155,7 +155,7 @@ if st.button("Analyze URL"):
                     values = [1 - prob, prob]
                     colors = ["green", "red"]
 
-                    ax.bar(labels, values, color=colors)
+                    ax.bar(labels, values, color=colors,width=0.4)
                     ax.set_ylim([0, 1])
                     ax.set_ylabel("Prob")
                     st.pyplot(fig)
@@ -201,4 +201,5 @@ if st.button("Analyze URL"):
 
         except Exception as e:
             st.error(f"Error: {e}")
+
 
