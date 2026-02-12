@@ -1,40 +1,63 @@
 import streamlit as st
 import pandas as pd
 import joblib
-from urllib.parse import urlparse
 import tldextract
-import re
+import requests
+import math
+from urllib.parse import urlparse
 
+# -------------------- CONFIG --------------------
 st.set_page_config(page_title="Phishing Website Detector", page_icon="🔒", layout="centered")
 
-st.title("🔒 Phishing Website Detector")
+st.title("🔒 Advanced Phishing Website Detector")
 st.write("Enter a website URL below to check if it is legitimate or a phishing site.")
 
-# --- Load model robustly (handles both dict and direct model pickle) ---
+# 🔐 Add your Google Safe Browsing API key here
+GOOGLE_API_KEY = "YOUR_GOOGLE_SAFE_BROWSING_API_KEY"
+
+# -------------------- LOAD MODEL --------------------
 obj = joblib.load("phish_model.pkl")
+
 if isinstance(obj, dict):
     model = obj.get("model")
-    model_features = obj.get("features")  # list of feature column names used during training
+    model_features = obj.get("features")
 else:
-    # older style: model saved directly
     model = obj
     model_features = None
 
-# If model failed to load, stop early
 if model is None:
-    st.error("Model failed to load. Please re-upload phish_model.pkl (it should contain the trained model).")
+    st.error("Model failed to load.")
     st.stop()
 
-# --- The feature extractor used to *match training* (full lexical features) ---
-def url_features_for_model(url):
+# -------------------- CONSTANTS --------------------
+SUSPICIOUS_KEYWORDS = [
+    "login", "verify", "update", "secure",
+    "account", "bank", "confirm", "signin",
+    "reset", "password"
+]
+
+SUSPICIOUS_TLDS = ["tk", "ml", "ga", "cf", "gq"]
+
+KNOWN_BRANDS = [
+    "paypal", "amazon", "google",
+    "facebook", "instagram", "bank"
+]
+
+# -------------------- HELPER FUNCTIONS --------------------
+
+def calculate_entropy(s):
+    if len(s) == 0:
+        return 0
+    prob = [float(s.count(c)) / len(s) for c in dict.fromkeys(list(s))]
+    return -sum([p * math.log2(p) for p in prob])
+
+def base_url_features(url):
     parsed = urlparse(url if "://" in url else "http://" + url)
     ext = tldextract.extract(url)
-    domain = ext.domain or ""
-    suffix = ext.suffix or ""
-    subdomain = ext.subdomain or ""
     s = url.lower()
 
     features = {}
+
     features['url_len'] = len(s)
     features['hostname_len'] = len(parsed.hostname or '')
     features['path_len'] = len(parsed.path or '')
@@ -44,58 +67,130 @@ def url_features_for_model(url):
     features['count_at'] = s.count('@')
     features['count_equal'] = s.count('=')
     features['count_slash'] = s.count('/')
-    features['has_ip'] = int(bool(parsed.hostname and all(ch.isdigit() or ch=='.' for ch in (parsed.hostname or '').replace(':','').split(':')[0].split('.')) and len((parsed.hostname or '').split('.'))==4))
     features['is_https'] = int(parsed.scheme == 'https')
-    features['subdomain_parts'] = subdomain.count('.') + 1 if subdomain else 0
-    features['domain_len'] = len(domain)
-    features['suffix_len'] = len(suffix)
     features['count_digits'] = sum(ch.isdigit() for ch in s)
     features['count_letters'] = sum(ch.isalpha() for ch in s)
     features['digits_to_len'] = features['count_digits'] / (features['url_len'] + 1)
     features['letters_to_len'] = features['count_letters'] / (features['url_len'] + 1)
+
+    # IP detection
+    hostname = parsed.hostname or ""
+    features['has_ip'] = int(
+        hostname.replace('.', '').isdigit() and hostname.count('.') == 3
+    )
+
+    # Subdomain count
+    features['subdomain_parts'] = ext.subdomain.count('.') + 1 if ext.subdomain else 0
+
     return features
 
-# --- Input box and prediction ---
-url_input = st.text_input("🔗 Enter Website URL", placeholder="e.g., https://example.com")
+def enhanced_features(url):
+    parsed = urlparse(url if "://" in url else "http://" + url)
+    ext = tldextract.extract(url)
+    s = url.lower()
+
+    features = base_url_features(url)
+
+    # Suspicious keywords
+    features["has_suspicious_keyword"] = int(
+        any(k in s for k in SUSPICIOUS_KEYWORDS)
+    )
+
+    # Suspicious TLD
+    features["suspicious_tld"] = int(ext.suffix in SUSPICIOUS_TLDS)
+
+    # Brand misuse
+    features["brand_in_domain"] = int(
+        any(b in ext.domain for b in KNOWN_BRANDS)
+    )
+
+    # URL entropy
+    features["url_entropy"] = calculate_entropy(s)
+
+    # Double slash redirect trick
+    features["double_slash_path"] = int("//" in parsed.path)
+
+    # Suspicious file extension
+    features["has_executable"] = int(
+        any(extn in s for extn in [".exe", ".zip", ".scr"])
+    )
+
+    return features
+
+def check_google_safe_browsing(url):
+    if GOOGLE_API_KEY == "YOUR_GOOGLE_SAFE_BROWSING_API_KEY":
+        return False  # Skip if no key added
+
+    endpoint = f"https://safebrowsing.googleapis.com/v4/threatMatches:find?key={GOOGLE_API_KEY}"
+
+    payload = {
+        "client": {
+            "clientId": "phishing-detector",
+            "clientVersion": "1.0"
+        },
+        "threatInfo": {
+            "threatTypes": ["MALWARE", "SOCIAL_ENGINEERING"],
+            "platformTypes": ["ANY_PLATFORM"],
+            "threatEntryTypes": ["URL"],
+            "threatEntries": [{"url": url}]
+        }
+    }
+
+    try:
+        response = requests.post(endpoint, json=payload)
+        result = response.json()
+        return "matches" in result
+    except:
+        return False
+
+# -------------------- UI --------------------
+url_input = st.text_input("🔗 Enter Website URL", placeholder="https://example.com")
 
 if st.button("Predict"):
+
     if not url_input.strip():
         st.warning("Please enter a URL.")
     else:
         try:
-            # Build feature dict and DataFrame
-            feat_dict = url_features_for_model(url_input)
+            feat_dict = enhanced_features(url_input)
             X = pd.DataFrame([feat_dict])
 
-            # If we have the model_features list saved with the model, ensure column order & missing cols
             if model_features:
-                # ensure all expected columns exist; add missing with zeros
-                for c in model_features:
-                    if c not in X.columns:
-                        X[c] = 0
-                # Keep only model_features in the right order
+                for col in model_features:
+                    if col not in X.columns:
+                        X[col] = 0
                 X = X[model_features]
-            else:
-                # If we don't have model_features, assume X columns match
-                pass
 
-            # Predict
             pred = model.predict(X)[0]
             prob = None
             if hasattr(model, "predict_proba"):
-                prob = float(model.predict_proba(X)[0, 1])
+                prob = float(model.predict_proba(X)[0][1])
 
-            # Show results
-            if pred == 1:
-                if prob is None:
-                    st.error("🚨 Predicted: Phishing")
-                else:
-                    st.error(f"🚨 Predicted: Phishing (prob={prob:.2f})")
+            # Google Safe Browsing Check
+            is_blacklisted = check_google_safe_browsing(url_input)
+
+            st.divider()
+            st.subheader("🔍 Analysis Results")
+
+            if is_blacklisted:
+                st.error("🚨 Google Safe Browsing: URL is reported as dangerous!")
             else:
-                if prob is None:
-                    st.success("✅ Predicted: Legitimate")
-                else:
-                    st.success(f"✅ Predicted: Legitimate (prob={prob:.2f})")
+                st.success("✅ Google Safe Browsing: No threats detected")
+
+            # Hybrid Decision Logic
+            final_prediction = "Legitimate"
+
+            if is_blacklisted:
+                final_prediction = "Phishing"
+            elif prob and prob > 0.7:
+                final_prediction = "Phishing"
+            elif pred == 1:
+                final_prediction = "Phishing"
+
+            if final_prediction == "Phishing":
+                st.error(f"🚨 Final Verdict: PHISHING (ML prob={prob:.2f})")
+            else:
+                st.success(f"✅ Final Verdict: LEGITIMATE (ML prob={prob:.2f})")
 
         except Exception as e:
-            st.error(f"An error occurred while processing the URL: {e}")
+            st.error(f"Error processing URL: {e}")
