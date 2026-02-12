@@ -4,3 +4,5 @@ joblib
 tldextract
 requests
 scikit-learn
+matplotlib
+
