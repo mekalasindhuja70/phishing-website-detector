@@ -156,7 +156,7 @@ if st.button("Analyze URL"):
                     colors = ["green", "red"]
                     # Control bar positions manually
                     x_positions = [0, 0.6]   # <-- smaller gap (default would be 0 and 1)
-                    ax.bar(x_positions, values, color=colors, width=0.4)
+                    ax.bar(x_positions, values, color=colors, width=0.3)
                     ax.set_xticks(x_positions)
                     ax.set_xticklabels(labels)
                     ax.set_ylim([0, 1])
@@ -204,6 +204,7 @@ if st.button("Analyze URL"):
 
         except Exception as e:
             st.error(f"Error: {e}")
+
 
 
 
