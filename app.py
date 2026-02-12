@@ -152,23 +152,32 @@ if st.button("Analyze URL"):
             st.subheader("🔍 Security Analysis")
 
             # -------------------- PROBABILITY GRAPH --------------------
-            if prob is not None:
-                st.subheader("📊 ML Risk Probability")
+            # -------------------- LAYOUT WITH COLUMNS --------------------
+           col1, col2 = st.columns([2, 1])  # Left bigger, right smaller
 
-                st.progress(int(prob*100))
+           with col1:
+           st.subheader("📊 ML Risk Probability")
+           st.progress(int(prob * 100))
+           if prob < 0.3:
+           st.success(f"🟢 Low Risk ({prob:.2f})")
+           elif prob < 0.7:
+           st.warning(f"🟡 Medium Risk ({prob:.2f})")
+           else:
+           st.error(f"🔴 High Risk ({prob:.2f})")
 
-                if prob < 0.3:
-                    st.success(f"🟢 Low Risk ({prob:.2f})")
-                elif prob < 0.7:
-                    st.warning(f"🟡 Medium Risk ({prob:.2f})")
-                else:
-                    st.error(f"🔴 High Risk ({prob:.2f})")
+           with col2:
+           # Smaller figure size
+           fig, ax = plt.subplots(figsize=(3, 3))  # 👈 control size here
 
-                fig, ax = plt.subplots()
-                ax.bar(["Legitimate","Phishing"], [1-prob, prob])
-                ax.set_ylim([0,1])
-                ax.set_ylabel("Probability")
-                st.pyplot(fig)
+           labels = ["Legitimate", "Phishing"]
+           values = [1 - prob, prob]
+           colors = ["green", "red"]
+
+           ax.bar(labels, values, color=colors)
+           ax.set_ylim([0, 1])
+           ax.set_ylabel("Prob")
+
+           st.pyplot(fig)
 
             # -------------------- GOOGLE SAFE BROWSING --------------------
             if is_blacklisted:
@@ -211,4 +220,5 @@ if st.button("Analyze URL"):
 
         except Exception as e:
             st.error(f"Error: {e}")
+
 
