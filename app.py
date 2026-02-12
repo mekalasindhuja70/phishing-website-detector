@@ -11,8 +11,6 @@ from urllib.parse import urlparse
 st.set_page_config(page_title="Advanced Phishing Detector", page_icon="🔒", layout="centered")
 
 st.title("🔒 Advanced Hybrid Phishing Website Detector")
-st.write("Machine Learning + Heuristics + Google Safe Browsing")
-
 # 🔐 ADD YOUR GOOGLE SAFE BROWSING API KEY
 GOOGLE_API_KEY = "YOUR_GOOGLE_SAFE_BROWSING_API_KEY"
 
@@ -155,7 +153,7 @@ if st.button("Analyze URL"):
                     values = [1 - prob, prob]
                     colors = ["green", "red"]
                     # Control bar positions manually
-                    x_positions = [0, 0.65]   
+                    x_positions = [0, 0.8]   
                     ax.bar(x_positions, values, color=colors, width=0.25)
                     ax.set_xticks(x_positions)
                     ax.set_xticklabels(labels)
@@ -205,6 +203,7 @@ if st.button("Analyze URL"):
 
         except Exception as e:
             st.error(f"Error: {e}")
+
 
 
 
