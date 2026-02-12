@@ -172,9 +172,9 @@ if st.button("Analyze URL"):
 
             # -------------------- GOOGLE SAFE BROWSING --------------------
             if is_blacklisted:
-                st.error("🚨 Google Safe Browsing: Reported as Dangerous")
+                st.error("🚨- Reported as Dangerous")
             else:
-                st.success("✅ Google Safe Browsing: No Threat Found")
+                st.success("✅- No Threat Found")
 
             # -------------------- FINAL DECISION --------------------
             final_prediction = "Legitimate"
@@ -211,3 +211,4 @@ if st.button("Analyze URL"):
 
         except Exception as e:
             st.error(f"Error: {e}")
+
